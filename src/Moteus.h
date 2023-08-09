@@ -16,39 +16,13 @@
 
 #include "moteus_protocol.h"
 
-struct Command2 {
-  int8_t destination = 1;
-  int8_t source = 0;
-  bool reply_required = false;
-  uint8_t data[64] = {};
-  uint8_t size = 0;
-
-  uint16_t can_prefix = 0x0000;  // A 13 bit CAN prefix
-
-  // If true, then the ID used is not calculated from destination and
-  // source, but is instead determined directly from arbitration_id.
-  bool raw = false;
-
-  uint32_t arbitration_id = 0;
-  int8_t bus = 0;
-
-  enum Toggle {
-    kDefault,
-    kForceOff,
-    kForceOn,
-  };
-
-  Toggle brs = kDefault;
-  Toggle fdcan_frame = kDefault;
-};
-
 class Moteus {
  public:
   using Command = mjbots::moteus::Command;
 
   struct Options {
     mjbots::moteus::Query::Format query_format;
-    // mjbots::moteus::PositionMode::Format position_format;
+    mjbots::moteus::PositionMode::Format position_format;
 
     bool disable_brs = true;
     int source = 0;
@@ -61,18 +35,15 @@ class Moteus {
     Options() {}
   };
 
-  Moteus(ACAN2517FD& can_bus)
-      : can_bus_(can_bus) {
-  }
-
-  void Begin(int8_t id, const Options& options) {
-    id_ = id;
-    options_ = options;
-
+  Moteus(ACAN2517FD& can_bus,
+         int id,
+         const Options& options = {})
+      : can_bus_(can_bus),
+        id_(id),
+        options_(options) {
     mjbots::moteus::WriteCanFrame query_write(&query_frame_);
     mjbots::moteus::Query::Make(&query_write, options_.query_format);
   }
-
 
   struct Result {
     unsigned long timestamp = 0;
@@ -88,6 +59,15 @@ class Moteus {
 
   bool SetStop() {
     return ExecuteSingleCommand(MakeStop());
+  }
+
+  Command MakePosition(const mjbots::moteus::PositionMode::Command& cmd) {
+    return MakeCommand(mjbots::moteus::PositionMode(),
+                       cmd, options_.position_format);
+  }
+
+  bool SetPosition(const mjbots::moteus::PositionMode::Command& cmd) {
+    return ExecuteSingleCommand(MakePosition(cmd));
   }
 
   bool ExecuteSingleCommand(const Command& cmd) {
@@ -178,10 +158,6 @@ class Moteus {
     kReplyRequired,
   };
 
-  Command2 ReturnCommand() {
-    return {};
-  }
-
   Command DefaultCommand(ReplyMode reply_mode = kReplyRequired) {
     Command result;
     result.destination = id_;
@@ -246,8 +222,8 @@ class Moteus {
   }
 
   ACAN2517FD& can_bus_;
-  int8_t id_;
-  Options options_;
+  const int8_t id_;
+  const Options options_;
 
   Result last_result_;
   mjbots::moteus::CanFrame query_frame_;
