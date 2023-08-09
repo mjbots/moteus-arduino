@@ -23,6 +23,9 @@ class Moteus {
   struct Options {
     mjbots::moteus::Query::Format query_format;
     mjbots::moteus::PositionMode::Format position_format;
+    mjbots::moteus::VFOCMode::Format vfoc_format;
+    mjbots::moteus::CurrentMode::Format current_format;
+    mjbots::moteus::StayWithinMode::Format stay_within_format;
 
     bool disable_brs = true;
     int source = 0;
@@ -53,14 +56,6 @@ class Moteus {
 
   const Result& last_result() const { return last_result_; }
 
-  Command MakeStop() {
-    return MakeCommand(mjbots::moteus::StopMode(), {}, {});
-  }
-
-  bool SetStop() {
-    return ExecuteSingleCommand(MakeStop());
-  }
-
   Command MakePosition(const mjbots::moteus::PositionMode::Command& cmd) {
     return MakeCommand(mjbots::moteus::PositionMode(),
                        cmd, options_.position_format);
@@ -68,6 +63,49 @@ class Moteus {
 
   bool SetPosition(const mjbots::moteus::PositionMode::Command& cmd) {
     return ExecuteSingleCommand(MakePosition(cmd));
+  }
+
+  Command MakeVFOC(const mjbots::moteus::VFOCMode::Command& cmd) {
+    return MakeCommand(mjbots::moteus::VFOCMode(),
+                       cmd, options_.vfoc_format);
+  }
+
+  bool SetVFOC(const mjbots::moteus::VFOCMode::Command& cmd) {
+    return ExecuteSingleCommand(MakeVFOC(cmd));
+  }
+
+  Command MakeCurrent(const mjbots::moteus::CurrentMode::Command& cmd) {
+    return MakeCommand(mjbots::moteus::CurrentMode(),
+                       cmd, options_.current_format);
+  }
+
+  bool SetCurrent(const mjbots::moteus::CurrentMode::Command& cmd) {
+    return ExecuteSingleCommand(MakeCurrent(cmd));
+  }
+
+  Command MakeStayWithin(const mjbots::moteus::StayWithinMode::Command& cmd) {
+    return MakeCommand(mjbots::moteus::StayWithinMode(),
+                       cmd, options_.stay_within_format);
+  }
+
+  bool SetStayWithin(const mjbots::moteus::StayWithinMode::Command& cmd) {
+    return ExecuteSingleCommand(MakeStayWithin(cmd));
+  }
+
+  Command MakeBrake() {
+    return MakeCommand(mjbots::moteus::BrakeMode(), {}, {});
+  }
+
+  bool SetBrake() {
+    return ExecuteSingleCommand(MakeBrake());
+  }
+
+  Command MakeStop() {
+    return MakeCommand(mjbots::moteus::StopMode(), {}, {});
+  }
+
+  bool SetStop() {
+    return ExecuteSingleCommand(MakeStop());
   }
 
   bool ExecuteSingleCommand(const Command& cmd) {
