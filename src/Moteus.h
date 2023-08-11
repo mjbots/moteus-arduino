@@ -30,8 +30,9 @@ namespace mm = mjbots::moteus;
 ///  2. A "Set" variant which sends a command to the controller and
 ///     waits for a response in a blocking manner.
 ///
-///  3. A "Poll" variant which sends a command and requires that the
-///     user poll regularly to check for a response.
+///  3. A "Begin" variant which sends a command and requires that the
+///     user call Poll() regularly to check for a response, and then
+///     retrieve that response from Moteus::last_result().
 class Moteus {
  public:
   using CanFdFrame = mm::CanFdFrame;
@@ -82,6 +83,7 @@ class Moteus {
 
   // The most recent result from any command.
   const Result& last_result() const { return last_result_; }
+  const CanFdFrame& last_send_frame() const { return last_send_frame_; }
 
 
   /////////////////////////////////////////
@@ -107,6 +109,10 @@ class Moteus {
     return ExecuteSingleCommand(MakeStop(query_override));
   }
 
+  void BeginStop(const mm::Query::Format* query_override = nullptr) {
+    return BeginSingleCommand(MakeStop(query_override));
+  }
+
 
   /////////////////////////////////////////
   // BrakeMode
@@ -118,6 +124,10 @@ class Moteus {
 
   bool SetBrake(const mm::Query::Format* query_override = nullptr) {
     return ExecuteSingleCommand(MakeBrake(query_override));
+  }
+
+  void BeginBrake(const mm::Query::Format* query_override = nullptr) {
+    return BeginSingleCommand(MakeBrake(query_override));
   }
 
 
@@ -141,6 +151,13 @@ class Moteus {
         MakePosition(cmd, command_override, query_override));
   }
 
+  void BeginPosition(const mm::PositionMode::Command& cmd,
+                     const mm::PositionMode::Format* command_override = nullptr,
+                     const mm::Query::Format* query_override = nullptr) {
+    return BeginSingleCommand(
+        MakePosition(cmd, command_override, query_override));
+  }
+
 
   /////////////////////////////////////////
   // VFOCMode
@@ -159,6 +176,12 @@ class Moteus {
                const mm::VFOCMode::Format* command_override = nullptr,
                const mm::Query::Format* query_override = nullptr) {
     return ExecuteSingleCommand(MakeVFOC(cmd, command_override, query_override));
+  }
+
+  void BeginVFOC(const mm::VFOCMode::Command& cmd,
+                 const mm::VFOCMode::Format* command_override = nullptr,
+                 const mm::Query::Format* query_override = nullptr) {
+    return BeginSingleCommand(MakeVFOC(cmd, command_override, query_override));
   }
 
 
@@ -181,6 +204,12 @@ class Moteus {
     return ExecuteSingleCommand(MakeCurrent(cmd, command_override, query_override));
   }
 
+  void BeginCurrent(const mm::CurrentMode::Command& cmd,
+                    const mm::CurrentMode::Format* command_override = nullptr,
+                    const mm::Query::Format* query_override = nullptr) {
+    return BeginSingleCommand(MakeCurrent(cmd, command_override, query_override));
+  }
+
 
   /////////////////////////////////////////
   // StayWithinMode
@@ -201,8 +230,153 @@ class Moteus {
     return ExecuteSingleCommand(MakeStayWithin(cmd, command_override, query_override));
   }
 
+  void BeginStayWithin(const mm::StayWithinMode::Command& cmd,
+                       const mm::StayWithinMode::Format* command_override = nullptr,
+                       const mm::Query::Format* query_override = nullptr) {
+    return BeginSingleCommand(MakeStayWithin(cmd, command_override, query_override));
+  }
 
-  bool ExecuteSingleCommand(const mm::CanFdFrame& frame) {
+
+  /////////////////////////////////////////
+  // Diagnostic channel operations
+
+  enum DiagnosticReplyMode {
+    kExpectOK,
+    kExpectSingleLine,
+  };
+
+  String DiagnosticCommand(const String& message_in,
+                           DiagnosticReplyMode reply_mode = kExpectOK) {
+    String message = message_in + "\n";
+    while (message.length() > 0) {
+      const auto to_write = message.length() < 48u ? message.length() : 48u;
+      mm::DiagnosticWrite::Command write;
+      write.data = message.c_str();
+      write.size = to_write;
+
+      auto frame = DefaultFrame(kNoReply);
+      mm::WriteCanData write_frame(frame.data, &frame.size);
+      mm::DiagnosticWrite::Make(&write_frame, write, {});
+
+      BeginSingleCommand(frame);
+      message.remove(0, to_write);
+    }
+
+    // Now we read until we get a complete response.
+    String response;
+    String current_line;
+
+    while (true) {
+      mm::DiagnosticRead::Command read;
+      auto frame = DefaultFrame(kReplyRequired);
+      mm::WriteCanData write_frame(frame.data, &frame.size);
+      mm::DiagnosticRead::Make(&write_frame, read, {});
+
+      BeginSingleCommand(frame);
+
+      while (true) {
+        while (Poll() == false);
+
+        const auto parsed = mm::DiagnosticResponse::Parse(
+            last_result_.frame.data, last_result_.frame.size);
+        if (parsed.channel != 1) {
+          // This must not have been for us after all.
+          continue;
+        }
+
+        // Sigh... older versions of Arduino have no ability to
+        // construct a string from a pointer and length.  Guess we'll
+        // emulate it.
+        String this_data;
+        for (int8_t i = 0; i < parsed.size; i++) {
+          this_data.concat(static_cast<char>(parsed.data[i]));
+        }
+
+        current_line.concat(this_data);
+
+        auto find_newline = [&]() {
+          const int cr = current_line.indexOf('\r');
+          const int nl = current_line.indexOf('\n');
+          const int first_newline =
+              (cr < 0 ? nl :
+               nl < 0 ? cr :
+               nl < cr ? nl : cr);
+          return first_newline;
+        };
+        int first_newline = -1;
+        while ((first_newline = find_newline()) != -1) {
+          String this_line = current_line.substring(0, first_newline);
+          if (reply_mode == kExpectSingleLine) {
+            return this_line;
+          } else if (this_line == "OK") {
+            return response;
+          } else {
+            response.concat(current_line.substring(0, first_newline + 1));
+            current_line.remove(0, first_newline + 1);
+          }
+        }
+
+        // We got a frame, so break out of our inner loop.
+        break;
+      }
+    }
+  }
+
+
+  /////////////////////////////////////////
+  // Non-command related methods
+
+  /// Look for a response to a previous command.  Return true if one
+  /// has been received.  The parsed results can be seen in
+  /// Moteus::last_result()
+  bool Poll() {
+    const auto now = micros();
+
+    if (!can_bus_.available()) { return false; }
+
+    CANFDMessage rx_msg;
+    can_bus_.receive(rx_msg);
+
+    const int8_t source = (rx_msg.id >> 8) & 0x7f;
+    const int8_t destination = (rx_msg.id & 0x7f);
+    const uint16_t can_prefix = (rx_msg.id >> 16);
+
+    if (source != options_.id ||
+        destination != options_.source ||
+        can_prefix != options_.can_prefix) {
+      return false;
+    }
+
+    last_result_.timestamp = now;
+
+    auto& cf = last_result_.frame;
+    cf.arbitration_id = rx_msg.id;
+    cf.destination = destination;
+    cf.source = source;
+    cf.size = rx_msg.len;
+    ::memcpy(&cf.data[0], &rx_msg.data[0], rx_msg.len);
+    cf.can_prefix = can_prefix;
+
+    if (rx_msg.type == CANFDMessage::CANFD_WITH_BIT_RATE_SWITCH) {
+      cf.brs = mm::CanFdFrame::kForceOn;
+      cf.fdcan_frame = mm::CanFdFrame::kForceOn;
+    } else if (rx_msg.type == CANFDMessage::CANFD_NO_BIT_RATE_SWITCH) {
+      cf.brs = mm::CanFdFrame::kForceOff;
+      cf.fdcan_frame = mm::CanFdFrame::kForceOn;
+    } else {
+      cf.brs = mm::CanFdFrame::kForceOff;
+      cf.fdcan_frame = mm::CanFdFrame::kForceOff;
+    }
+
+    last_result_.values =
+        mm::Query::Parse(&cf.data[0], cf.size);
+
+    return true;
+  }
+
+  void BeginSingleCommand(const mm::CanFdFrame& frame) {
+    last_send_frame_ = frame;
+
     CANFDMessage can_message;
     can_message.id = frame.arbitration_id;
     can_message.ext = true;
@@ -227,8 +401,12 @@ class Moteus {
     PadCan(&can_message);
 
     can_bus_.tryToSend(can_message);
+  }
 
-    if (!frame.reply_required) { return false; }
+  bool ExecuteSingleCommand(const mm::CanFdFrame& frame) {
+    BeginSingleCommand(frame);
+
+    if (!last_send_frame_.reply_required) { return false; }
 
     auto start = micros();
     auto end = start + options_.min_rcv_wait_us;
@@ -241,46 +419,9 @@ class Moteus {
         return false;
       }
 
-      if (!can_bus_.available()) { continue; }
-
-      CANFDMessage rx_msg;
-      can_bus_.receive(rx_msg);
-
-      const int8_t source = (rx_msg.id >> 8) & 0x7f;
-      const int8_t destination = (rx_msg.id & 0x7f);
-      const uint16_t can_prefix = (rx_msg.id >> 16);
-
-      if (source != options_.id ||
-          destination != options_.source ||
-          can_prefix != options_.can_prefix) {
-        continue;
+      if (Poll()) {
+        return true;
       }
-
-      last_result_.timestamp = now;
-
-      auto& cf = last_result_.frame;
-      cf.arbitration_id = rx_msg.id;
-      cf.destination = destination;
-      cf.source = source;
-      cf.size = rx_msg.len;
-      ::memcpy(&cf.data[0], &rx_msg.data[0], rx_msg.len);
-      cf.can_prefix = can_prefix;
-
-      if (rx_msg.type == CANFDMessage::CANFD_WITH_BIT_RATE_SWITCH) {
-        cf.brs = mm::CanFdFrame::kForceOn;
-        cf.fdcan_frame = mm::CanFdFrame::kForceOn;
-      } else if (rx_msg.type == CANFDMessage::CANFD_NO_BIT_RATE_SWITCH) {
-        cf.brs = mm::CanFdFrame::kForceOff;
-        cf.fdcan_frame = mm::CanFdFrame::kForceOn;
-      } else {
-        cf.brs = mm::CanFdFrame::kForceOff;
-        cf.fdcan_frame = mm::CanFdFrame::kForceOff;
-      }
-
-      last_result_.values =
-          mm::Query::Parse(&cf.data[0], cf.size);
-
-      return true;
     }
   }
 
@@ -360,5 +501,6 @@ class Moteus {
   const Options options_;
 
   Result last_result_;
+  mm::CanFdFrame last_send_frame_;
   mm::CanData query_frame_;
 };
