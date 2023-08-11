@@ -40,6 +40,46 @@
 namespace mjbots {
 namespace moteus {
 
+/// This is a single CAN-FD frame, its headers, and other associated
+/// metadata, like which bus the message was sent or received from in
+/// multi-bus systems.
+struct CanFdFrame {
+  ///////////////////////////////////////////
+  /// First are the raw data from the bus.
+
+  // Non-zero if this transport supports multiple busses.
+  int8_t bus = 0;
+
+  uint32_t arbitration_id = 0;
+  uint8_t data[64] = {};
+  uint8_t size = 0;
+
+  enum Toggle {
+    kDefault,
+    kForceOff,
+    kForceOn,
+  };
+
+  Toggle brs = kDefault;
+  Toggle fdcan_frame = kDefault;
+
+  //////////////////////////////////////////
+  /// Next are parsed items for moteus frames.  These are not required
+  /// to be set when sending a frame to a transport, but they will be
+  /// filled in on receipt.  Higher level layers than the transport
+  /// layer may use them to populate the bus-level data.
+
+  // If true, then the ID used is not calculated from destination and
+  // source, but is instead determined directly from arbitration_id.
+  bool raw = false;
+
+  int8_t destination = 0;
+  int8_t source = 0;
+  bool reply_required = false;
+  uint16_t can_prefix = 0x0000;  // A 13 bit CAN prefix
+};
+
+
 /// The expected version associated with register 0x102.  If it
 /// differs from this, then semantics of one or more registers may
 /// have changed.
@@ -180,40 +220,23 @@ enum class HomeState {
 };
 
 
-/// This is a single CAN-FD frame, its headers, and other associated
-/// meta-data, like which bus the message was sent or received from in
-/// multi-bus systems.
-struct Command {
-  int8_t destination = 0;
-  int8_t source = 0;
-  bool reply_required = false;
-  uint8_t data[64] = {};
-  uint8_t size = 0;
-
-  uint16_t can_prefix = 0x0000;  // A 13 bit CAN prefix
-
-  // If true, then the ID used is not calculated from destination and
-  // source, but is instead determined directly from arbitration_id.
-  bool raw = false;
-
-  uint32_t arbitration_id = 0;
-  int8_t bus = 0;
-
-  enum Toggle {
-    kDefault,
-    kForceOff,
-    kForceOn,
-  };
-
-  Toggle brs = kDefault;
-  Toggle fdcan_frame = kDefault;
-};
-
+////////////////////////////////////////////////////////////////
+// Each command that can be issued is represented by a structure below
+// with a few different sub-structs.  Possibilities are:
+//
+//  'Command' items that are serialized in an outgoing message
+//  'Format'  the corresponding resolution for each item in 'Command'
+//  'Result'  the deserialized version of a response
+//
+// Additionally, there are two static methods possible:
+//
+//  'Make' - take a Command and Format, and serialize it
+//  'Parse' - deserialize CAN data into a 'Result' structure
 
 struct EmptyMode {
   struct Command {};
   struct Format {};
-  static void Make(WriteCanFrame*, const Command&, const Format&) {}
+  static void Make(WriteCanData*, const Command&, const Format&) {}
 };
 
 struct Query {
@@ -288,7 +311,7 @@ struct Query {
     return lhs->register_number - rhs->register_number;
   }
 
-  static void Make(WriteCanFrame* frame, const Format& format) {
+  static void Make(WriteCanData* frame, const Format& format) {
     {
       const Resolution kResolutions[] = {
         format.mode,
@@ -395,7 +418,7 @@ struct Query {
     return Parse(&parser);
   }
 
-  static Result Parse(const CanFrame* frame) {
+  static Result Parse(const CanData* frame) {
     MultiplexParser parser(frame);
 
     return Parse(&parser);
@@ -603,6 +626,8 @@ struct Query {
 };
 
 struct GenericQuery {
+  struct Command {};
+
   struct ItemValue {
     int16_t register_number = -1;
     double value = 0.0;
@@ -632,7 +657,7 @@ struct GenericQuery {
     return lhs->register_number - rhs->register_number;
   }
 
-  static void Make(WriteCanFrame* frame, const Format& format) {
+  static void Make(WriteCanData* frame, const Command&, const Format& format) {
     ItemFormat sorted_values[64] = {};
     ::memcpy(&sorted_values[0], &(format.values[0]), sizeof(format.values));
     ::qsort(&sorted_values[0], kMaxItems, sizeof(ItemFormat), ItemFormatSort);
@@ -685,7 +710,7 @@ struct GenericQuery {
     return Parse(&parser);
   }
 
-  static Result Parse(const CanFrame* frame) {
+  static Result Parse(const CanData* frame) {
     MultiplexParser parser(frame);
 
     return Parse(&parser);
@@ -740,7 +765,7 @@ struct PositionMode {
     Resolution fixed_voltage_override = kIgnore;
   };
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command& command,
                    const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -819,7 +844,7 @@ struct VFOCMode {
     Resolution theta_rad_rate = kFloat;
   };
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command& command,
                    const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -877,7 +902,7 @@ struct CurrentMode {
     Resolution q_A = kFloat;
   };
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command& command,
                    const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -896,10 +921,10 @@ struct CurrentMode {
         sizeof(kResolutions) / sizeof(*kResolutions));
 
     if (combiner.MaybeWrite()) {
-      frame->WriteCurrent(command.d_A, format.d_A);
+      frame->WriteCurrent(command.q_A, format.q_A);
     }
     if (combiner.MaybeWrite()) {
-      frame->WriteCurrent(command.q_A, format.q_A);
+      frame->WriteCurrent(command.d_A, format.d_A);
     }
   }
 };
@@ -925,7 +950,7 @@ struct StayWithinMode {
     Resolution watchdog_timeout = kIgnore;
   };
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command& command,
                    const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -977,7 +1002,7 @@ struct BrakeMode {
   struct Command {};
   struct Format {};
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command&,
                    const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -990,7 +1015,7 @@ struct StopMode {
   struct Command {};
   struct Format {};
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command&,
                    const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -1010,7 +1035,7 @@ struct GpioWrite {
     Resolution aux2 = kInt8;
   };
 
-  static void Make(WriteCanFrame* frame,
+  static void Make(WriteCanData* frame,
                    const Command& command,
                    const Format& format) {
     const Resolution kResolutions[] = {
@@ -1040,7 +1065,7 @@ struct OutputNearest {
 
   struct Format {};
 
-  static void Make(WriteCanFrame* frame, const Command& command, const Format&) {
+  static void Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteFloat | 0x01);
     frame->WriteVaruint(Register::kSetOutputNearest);
     frame->Write<float>(command.position);
@@ -1054,7 +1079,7 @@ struct OutputExact {
 
   struct Format {};
 
-  static void Make(WriteCanFrame* frame, const Command& command, const Format&) {
+  static void Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteFloat | 0x01);
     frame->WriteVaruint(Register::kSetOutputExact);
     frame->Write<float>(command.position);
@@ -1065,7 +1090,7 @@ struct RequireReindex {
   struct Command {};
   struct Format {};
 
-  static void Make(WriteCanFrame* frame, const Command&, const Format&) {
+  static void Make(WriteCanData* frame, const Command&, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->WriteVaruint(Register::kRequireReindex);
     frame->Write<int8_t>(1);
@@ -1081,7 +1106,7 @@ struct DiagnosticWrite {
 
   struct Format {};
 
-  static void Make(WriteCanFrame* frame, const Command& command, const Format&) {
+  static void Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kClientToServer);
     frame->Write<int8_t>(command.channel);
     frame->Write<int8_t>(command.size);
@@ -1097,7 +1122,7 @@ struct DiagnosticRead {
 
   struct Format {};
 
-  static void Make(WriteCanFrame* frame, const Command& command, const Format&) {
+  static void Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kClientPollServer);
     frame->Write<int8_t>(command.channel);
     frame->Write<int8_t>(command.max_length);
@@ -1144,7 +1169,7 @@ struct ClockTrim {
 
   struct Format {};
 
-  static void Make(WriteCanFrame* frame, const Command& command, const Format&) {
+  static void Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt32 | 0x01);
     frame->WriteVaruint(Register::kClockTrim);
     frame->Write<int32_t>(command.trim);
