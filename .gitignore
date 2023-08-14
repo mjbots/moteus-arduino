@@ -1,3 +1,4 @@
 *~
 src/moteus_tokenizer.h
 src/moteus_transport.h
+src/moteus_optional.h
