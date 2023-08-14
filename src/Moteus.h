@@ -36,6 +36,7 @@ namespace mm = mjbots::moteus;
 class Moteus {
  public:
   using CanFdFrame = mm::CanFdFrame;
+  static constexpr int kDiagnosticTimeoutUs = 4000;
 
   struct Options {
     // The ID of the servo to communicate with.
@@ -268,7 +269,7 @@ class Moteus {
     String current_line;
 
     const auto start = micros();
-    auto end = start + 4000;
+    auto end = start + kDiagnosticTimeoutUs;
 
     while (true) {
       {
@@ -287,7 +288,17 @@ class Moteus {
       }
 
       while (true) {
-        while (Poll() == false);
+        if (![&]() {
+          while (!Poll()) {
+            const auto now = micros();
+            if (static_cast<long>(now - end) > 0) {
+              return false;
+            }
+          }
+          return true;
+        }()) {
+          break;
+        }
 
         {
           const auto parsed = mm::DiagnosticResponse::Parse(
@@ -299,7 +310,7 @@ class Moteus {
 
           if (parsed.size) {
             // We got some data, so bump our timeout forward.
-            end = start + 4000;
+            end = start + kDiagnosticTimeoutUs;
           }
 
           // Sigh... older versions of Arduino have no ability to
@@ -344,6 +355,54 @@ class Moteus {
     }
   }
 
+  String SetDiagnosticRead(int channel = 1) {
+    {
+      mm::DiagnosticRead::Command read;
+      read.channel = channel;
+      auto frame = DefaultFrame(kReplyRequired);
+      mm::WriteCanData write_frame(frame.data, &frame.size);
+      mm::DiagnosticRead::Make(&write_frame, read, {});
+
+      BeginSingleCommand(frame);
+    }
+
+    const auto start = micros();
+    auto end = start + kDiagnosticTimeoutUs;
+
+    while (true) {
+      if (![&]() {
+        while (!Poll()) {
+          const auto now = micros();
+          if (static_cast<long>(now - end) > 0) {
+            return false;
+          }
+        }
+        return true;
+      }()) {
+        return "";
+      }
+
+      const auto parsed = mm::DiagnosticResponse::Parse(
+          last_result_.frame.data, last_result_.frame.size);
+      if (parsed.channel != channel) {
+        continue;
+      }
+
+      String result;
+      result.reserve(parsed.size);
+      for (int8_t i = 0; i < parsed.size; i++) {
+        result.concat(static_cast<char>(parsed.data[i]));
+      }
+      return result;
+    }
+  }
+
+  void SetDiagnosticFlush(int channel = 1) {
+    while (true) {
+      const auto response = SetDiagnosticRead(channel);
+      if (response.length() == 0) { return; }
+    }
+  }
 
   /////////////////////////////////////////
   // Non-command related methods
