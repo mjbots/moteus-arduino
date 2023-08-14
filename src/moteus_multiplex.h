@@ -147,14 +147,15 @@ class WriteCanData {
 
   template <typename T, typename X>
   void Write(X value_in) {
+#ifndef __ORDER_LITTLE_ENDIAN__
+#error "only little endian architectures supported"
+#endif
+
     T value = static_cast<T>(value_in);
     if (sizeof(value) + *size_ > 64) {
       abort();
     }
 
-#ifndef __ORDER_LITTLE_ENDIAN__
-#error "only little endian architectures supported"
-#endif
     ::memcpy(&data_[*size_],
              reinterpret_cast<const char*>(&value),
              sizeof(value));

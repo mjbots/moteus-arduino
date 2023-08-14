@@ -66,8 +66,13 @@ class Moteus {
          const Options& options = {})
       : can_bus_(can_bus),
         options_(options) {
-    mm::WriteCanData query_write(&query_frame_);
+    mm::CanData can_data;
+    mm::WriteCanData query_write(&can_data);
     mm::Query::Make(&query_write, options_.query_format);
+
+    query_size_ = can_data.size;
+    query_data_ = reinterpret_cast<char*>(realloc(query_data_, query_size_));
+    ::memcpy(query_data_, &can_data.data[0], query_size_);
   }
 
   struct Result {
@@ -478,24 +483,24 @@ class Moteus {
       mm::Query::Make(&write_frame, *query_override);
     } else if (options_.default_query) {
       ::memcpy(&result.data[result.size],
-               &query_frame_.data[0],
-               query_frame_.size);
-      result.size += query_frame_.size;
+               query_data_,
+               query_size_);
+      result.size += query_size_;
     }
 
     return result;
   }
 
-  static int8_t RoundUpDlc(size_t size) {
-    if (size == 0) { return 0; }
-    if (size == 1) { return 1; }
-    if (size == 2) { return 2; }
-    if (size == 3) { return 3; }
-    if (size == 4) { return 4; }
-    if (size == 5) { return 5; }
-    if (size == 6) { return 6; }
-    if (size == 7) { return 7; }
-    if (size == 8) { return 8; }
+  static int8_t RoundUpDlc(int8_t size) {
+    if (size <= 0) { return 0; }
+    if (size <= 1) { return 1; }
+    if (size <= 2) { return 2; }
+    if (size <= 3) { return 3; }
+    if (size <= 4) { return 4; }
+    if (size <= 5) { return 5; }
+    if (size <= 6) { return 6; }
+    if (size <= 7) { return 7; }
+    if (size <= 8) { return 8; }
     if (size <= 12) { return 12; }
     if (size <= 16) { return 16; }
     if (size <= 20) { return 20; }
@@ -518,5 +523,6 @@ class Moteus {
   const Options options_;
 
   Result last_result_;
-  mm::CanData query_frame_;
+  char* query_data_ = nullptr;
+  size_t query_size_ = 0;
 };
