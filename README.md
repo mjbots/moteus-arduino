@@ -6,6 +6,8 @@ This is a C++ library that provides a convenient API for controlling and monitor
 
 ## Getting started ##
 
+Note that this library can only communicate and operate a moteus controller which has already been calibrated.  Calibration currently can not be performed via an Arduino and requires `moteus_tool` executing on a desktop computer with some CAN-FD adapter.  See the moteus [getting started guide](https://github.com/mjbots/moteus/blob/main/docs/getting_started.md#calibration) for details.  The only controllers sold by mjbots.com which are pre-calibrated are those included in development kits.
+
 ### Hardware ###
 
 You will need to have hardware that is compatible with the [ACAN2517FD library](https://github.com/pierremolinaro/acan2517FD), this will be something that has the MCP2517FD or MCP2518FD CAN-FD controller onboard.
