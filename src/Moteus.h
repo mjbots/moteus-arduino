@@ -69,7 +69,7 @@ class Moteus {
     // command.
     bool default_query = true;
 
-    uint16_t min_rcv_wait_us = 800;
+    uint16_t min_rcv_wait_us = 2000;
 
     Options() {}
   };
@@ -167,6 +167,34 @@ class Moteus {
                      const mm::Query::Format* query_override = nullptr) {
     BeginSingleCommand(
         MakePosition(cmd, command_override, query_override));
+  }
+
+  bool SetPositionWaitComplete(const mm::PositionMode::Command& cmd,
+                               double period_s,
+                               const mm::PositionMode::Format* command_override = nullptr,
+                               const mm::Query::Format* query_override = nullptr) {
+    mm::Query::Format query_format =
+        query_override == nullptr ? options_.query_format : *query_override;
+    query_format.trajectory_complete = kInt8;
+
+    // The query returned from a mode change will always report the
+    // previous state.  Thus we need to have at least 2 responses
+    // before we have a valid trajectory complete flag.
+    int count = 2;
+    while (true) {
+      const bool got_result = SetPosition(cmd, command_override, &query_format);
+      if (got_result) {
+        count = count - 1;
+        if (count < 0) { count = 0; }
+      }
+      if (count == 0 &&
+          got_result &&
+          last_result_.values.trajectory_complete) {
+        return true;
+      }
+
+      delay(static_cast<unsigned long>(period_s * 1000));
+    }
   }
 
 
@@ -502,6 +530,7 @@ class Moteus {
 
     auto start = micros();
     auto end = start + options_.min_rcv_wait_us;
+    bool got_a_response = false;
 
     while (true) {
       const auto now = micros();
@@ -512,6 +541,9 @@ class Moteus {
       }
 
       if (Poll()) {
+        got_a_response = true;
+      } else if (got_a_response) {
+        // We both received a response, and have no more queued up.
         return true;
       }
     }
