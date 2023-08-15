@@ -12,7 +12,7 @@ Note that this library can only communicate and operate a moteus controller whic
 
 You will need to have hardware that is compatible with the [ACAN2517FD library](https://github.com/pierremolinaro/acan2517FD), this will be something that has the MCP2517FD or MCP2518FD CAN-FD controller onboard.
 
-The CAN-FD bus needs to be connected to moteus, typically this would be at least the CANL and CANH wires, and likely the ground as well.
+The CAN-FD bus needs to be connected to moteus, typically this would be at least the CANL and CANH wires, and likely the ground as well.  For more than 2 or 3 controllers, separate 120 ohm termination resistors will be required on each end of the CAN bus.  Some Arduino CAN-FD shields, like the CANBed FD, have one termination resistor built in.
 
 ### Software ###
 
