@@ -1,11 +1,8 @@
 //——————————————————————————————————————————————————————————————————————————————
-// Demonstration of control and monitoring of 2 moteus controllers
-// running on a CANBed FD from longan labs.
+// Shows how to use the moteus diagnostic protocol to set and read
+// configurable values on a CANBed FD from longan labs.
 //  * https://mjbots.com/products/moteus-r4-11
 //  * https://www.longan-labs.cc/1030009.html
-//
-// Controller ID 1 is moved through a sine wave pattern, while
-// controller ID 2 just has a brake command sent.
 // ——————————————————————————————————————————————————————————————————————————————
 
 #include <ACAN2517FD.h>
@@ -33,15 +30,17 @@ ACAN2517FD can (MCP2517_CS, SPI, MCP2517_INT) ;
 Moteus moteus1(can, []() {
   Moteus::Options options;
   options.id = 1;
-  return options;
-}());
-Moteus moteus2(can, []() {
-  Moteus::Options options;
-  options.id = 2;
+  // By default, only position and velocity are queried.  Additional
+  // fields can be requested by changing their resolution in the
+  // options structure.
+  options.query_format.torque = Moteus::kFloat;
   return options;
 }());
 
+
 Moteus::PositionMode::Command position_cmd;
+Moteus::PositionMode::Format position_fmt;
+
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
@@ -75,11 +74,38 @@ void setup() {
     delay(1000);
   }
 
-  // To clear any faults the controllers may have, we start by sending
-  // a stop command to each.
+  // First we'll clear faults.
   moteus1.SetStop();
-  moteus2.SetStop();
   Serial.println(F("all stopped"));
+
+  // Now we will use the diagnostic protocol to ensure some
+  // configurable parameters are set to our liking.
+
+  // First, in case this motor has been opened with tview, we will try
+  // to stop any unsolicited data that may be occurring.
+  moteus1.DiagnosticCommand(F("tel stop"));
+  moteus1.SetDiagnosticFlush();
+
+  // Now we can send some commands to configure things.
+  moteus1.DiagnosticCommand(F("conf set servo.pid_position.kp 2.0"));
+  moteus1.DiagnosticCommand(F("conf set servo.pid_position.kd 0.1"));
+
+  // Finally, verify that our config was set properly.
+  const auto current_kp =
+      moteus1.DiagnosticCommand(F("conf get servo.pid_position.kp"),
+                                Moteus::kExpectSingleLine);
+  const auto current_kd =
+      moteus1.DiagnosticCommand(F("conf get servo.pid_position.kd"),
+                                Moteus::kExpectSingleLine);
+
+  Serial.print("Current config: kp=");
+  Serial.print(current_kp);
+  Serial.print(" kd=");
+  Serial.print(current_kd);
+  Serial.println();
+
+  position_fmt.velocity_limit = Moteus::kFloat;
+  position_fmt.accel_limit = Moteus::kFloat;
 }
 
 uint16_t gLoopCount = 0;
@@ -93,11 +119,13 @@ void loop() {
   gLoopCount++;
 
   Moteus::PositionMode::Command cmd;
-  cmd.position = NaN;
-  cmd.velocity = 0.2 * ::sin(time / 1000.0);
+  // Oscillate between position 0.5 and position 0.1 every 2s.
+  cmd.position = (gNextSendMillis / 2000) % 2 ? 0.5 : 0.1;
+  cmd.velocity = 0.0;
+  cmd.velocity_limit = 2.0;
+  cmd.accel_limit = 3.0;
 
-  moteus1.SetPosition(cmd);
-  moteus2.SetBrake();
+  moteus1.SetPosition(cmd, &position_fmt);
 
   if (gLoopCount % 5 != 0) { return; }
 
@@ -106,16 +134,14 @@ void loop() {
   Serial.print(F("time "));
   Serial.print(gNextSendMillis);
 
-  auto print_moteus = [](const Moteus::Query::Result& query) {
-    Serial.print(static_cast<int>(query.mode));
-    Serial.print(F(" "));
-    Serial.print(query.position);
-    Serial.print(F("  velocity "));
-    Serial.print(query.velocity);
-  };
-
-  print_moteus(moteus1.last_result().values);
-  Serial.print(F(" / "));
-  print_moteus(moteus2.last_result().values);
+  const auto& v = moteus1.last_result().values;
+  Serial.print(F(" mode="));
+  Serial.print(static_cast<int>(v.mode));
+  Serial.print(F(" pos="));
+  Serial.print(v.position);
+  Serial.print(F(" vel="));
+  Serial.print(v.velocity);
+  Serial.print(F(" torque="));
+  Serial.print(v.torque);
   Serial.println();
 }

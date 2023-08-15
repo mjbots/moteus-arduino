@@ -44,10 +44,10 @@ class Moteus {
   using CurrentMode = mm::CurrentMode;
   using StayWithinMode = mm::StayWithinMode;
 
-  static constexpr int8_t kInt8 = mm::Resolution::kInt8;
-  static constexpr int8_t kInt16 = mm::Resolution::kInt16;
-  static constexpr int8_t kInt32 = mm::Resolution::kInt32;
-  static constexpr int8_t kFloat = mm::Resolution::kFloat;
+  static constexpr mm::Resolution kInt8 = mm::Resolution::kInt8;
+  static constexpr mm::Resolution kInt16 = mm::Resolution::kInt16;
+  static constexpr mm::Resolution kInt32 = mm::Resolution::kInt32;
+  static constexpr mm::Resolution kFloat = mm::Resolution::kFloat;
 
   struct Options {
     // The ID of the servo to communicate with.
