@@ -101,7 +101,9 @@ class Moteus {
   // Query
 
   CanFdFrame MakeQuery(const mm::Query::Format* format_override = nullptr) {
-    return MakeFrame(mm::EmptyMode(), {}, {}, format_override);
+    return MakeFrame(mm::EmptyMode(), {}, {},
+                     format_override == nullptr ?
+                     &options_.query_format : format_override);
   }
 
   bool SetQuery(const mm::Query::Format* query_override = nullptr) {
@@ -576,6 +578,7 @@ class Moteus {
                        const typename CommandType::Format& fmt,
                        const mm::Query::Format* query_override = nullptr) {
     auto result = DefaultFrame(
+        query_override != nullptr ? kReplyRequired :
         options_.default_query ? kReplyRequired : kNoReply);
 
     mm::WriteCanData write_frame(result.data, &result.size);
