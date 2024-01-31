@@ -454,6 +454,9 @@ class Moteus {
   bool Poll() {
     const auto now = micros();
 
+    // Ensure any interrupts have been handled.
+    can_bus_.poll();
+
     if (!can_bus_.available()) { return false; }
 
     CANFDMessage rx_msg;
@@ -520,7 +523,13 @@ class Moteus {
 
     PadCan(&can_message);
 
+    // To work even when the ACAN2517FD doesn't have functioning
+    // interrupts, we will just poll it before and after attempting to
+    // send our message.  This slows things down, but we're on an
+    // Arduino, so who cares?
+    can_bus_.poll();
     can_bus_.tryToSend(can_message);
+    can_bus_.poll();
 
     return frame.reply_required;
   }
