@@ -26,6 +26,7 @@
 #ifndef ARDUINO
 
 #include <limits>
+#include <vector>
 #define NaN std::numeric_limits<double>::quiet_NaN();
 
 #else
@@ -75,8 +76,17 @@ struct CanFdFrame {
 
   int8_t destination = 0;
   int8_t source = 0;
-  bool reply_required = false;
   uint16_t can_prefix = 0x0000;  // A 13 bit CAN prefix
+
+  ////////////////////////////////////////
+  /// Finally other hinting data.
+
+  // Whether this frame is expected to elicit a response.
+  bool reply_required = false;
+
+  // If this frame does elicit a response, how large is it expected to
+  // be.
+  uint8_t expected_reply_size = 0;
 };
 
 
@@ -188,6 +198,7 @@ enum Register : uint16_t {
   kSetOutputNearest = 0x130,
   kSetOutputExact = 0x131,
   kRequireReindex = 0x132,
+  kRecapturePositionVelocity = 0x133,
 
   kDriverFault1 = 0x140,
   kDriverFault2 = 0x141,
@@ -236,7 +247,9 @@ enum class HomeState {
 struct EmptyMode {
   struct Command {};
   struct Format {};
-  static void Make(WriteCanData*, const Command&, const Format&) {}
+  static uint8_t Make(WriteCanData*, const Command&, const Format&) {
+    return 0;
+  }
 };
 
 struct Query {
@@ -309,7 +322,9 @@ struct Query {
     Format() : extra() {}
   };
 
-  static void Make(WriteCanData* frame, const Format& format) {
+  static uint8_t Make(WriteCanData* frame, const Format& format) {
+    uint8_t reply_size = 0;
+
     {
       const Resolution kResolutions[] = {
         format.mode,
@@ -327,6 +342,7 @@ struct Query {
       for (uint16_t i = 0; i < kResolutionsSize; i++) {
         combiner.MaybeWrite();
       }
+      reply_size += combiner.reply_size();
     }
 
     {
@@ -345,6 +361,7 @@ struct Query {
       for (uint16_t i = 0; i < kResolutionsSize; i++) {
         combiner.MaybeWrite();
       }
+      reply_size += combiner.reply_size();
     }
 
     {
@@ -359,6 +376,7 @@ struct Query {
       for (uint16_t i = 0; i < kResolutionsSize; i++) {
         combiner.MaybeWrite();
       }
+      reply_size += combiner.reply_size();
     }
 
     {
@@ -372,7 +390,7 @@ struct Query {
         return kMaxExtra;
       }();
 
-      if (size == 0) { return; }
+      if (size == 0) { return reply_size; }
       const int16_t min_register_number = format.extra[0].register_number;
       const int16_t max_register_number = format.extra[size - 1].register_number;
 
@@ -383,7 +401,11 @@ struct Query {
       // below.
       if (required_registers > 512) { ::abort(); }
 
+#ifndef ARDUINO
+      std::vector<Resolution> resolutions(required_registers);
+#else
       Resolution resolutions[required_registers];
+#endif
       ::memset(&resolutions[0], 0, sizeof(Resolution) * required_registers);
 
       for (int16_t this_register = min_register_number, index = 0;
@@ -399,11 +421,14 @@ struct Query {
       }
       WriteCombiner combiner(
           frame, 0x10, min_register_number,
-          resolutions, required_registers);
+          &resolutions[0], required_registers);
       for (uint16_t i = 0; i < required_registers; i++) {
         combiner.MaybeWrite();
       }
+      reply_size += combiner.reply_size();
     }
+
+    return reply_size;
   }
 
   static Result Parse(const uint8_t* data, uint8_t size) {
@@ -621,6 +646,7 @@ struct Query {
       { R::kSetOutputNearest, 3, MP::kInt, },
       // { R::kSetOutputExact, 1, MP::kInt, },
       // { R::kRequireReindex, 1, MP::kInt, },
+      // { R::kRecapturePositionVelocity, 1, MP::kInt, }
 
       { R::kDriverFault1, 2, MP::kInt, },
       // { R::kDriverFault2, 1, MP::kInt, },
@@ -637,7 +663,7 @@ struct Query {
 #else
       const int16_t start_reg = pgm_read_word_near(&kRegisterDefinitions[i].register_number);
       const uint8_t block_size = pgm_read_byte_near(&kRegisterDefinitions[i].block_size);
-      const int8_t concrete_type = pgm_read_byte_near(kRegisterDefinitions[i].concrete);
+      const int8_t concrete_type = pgm_read_byte_near(&kRegisterDefinitions[i].concrete);
 #endif
       if (register_number >= start_reg &&
           register_number < (start_reg + block_size)) {
@@ -681,7 +707,7 @@ struct GenericQuery {
     return lhs->register_number - rhs->register_number;
   }
 
-  static void Make(WriteCanData* frame, const Command&, const Format& format) {
+  static uint8_t Make(WriteCanData* frame, const Command&, const Format& format) {
     const int16_t size = [&]() {
       for (int16_t i = 0; i < kMaxItems; i++) {
         if (format.values[i].register_number ==
@@ -692,7 +718,7 @@ struct GenericQuery {
       return kMaxItems;
     }();
 
-    if (size == 0) { return; }
+    if (size == 0) { return 0; }
     const int16_t min_register_number = format.values[0].register_number;
     const int16_t max_register_number = format.values[size - 1].register_number;
 
@@ -702,7 +728,11 @@ struct GenericQuery {
     // below.
     if (required_registers > 512) { ::abort(); }
 
+#ifndef ARDUINO
+    std::vector<Resolution> resolutions(required_registers);
+#else
     Resolution resolutions[required_registers];
+#endif
     ::memset(&resolutions[0], 0, sizeof(Resolution) * required_registers);
 
     for (int16_t this_register = min_register_number, index = 0;
@@ -718,10 +748,12 @@ struct GenericQuery {
     }
     WriteCombiner combiner(
         frame, 0x10, min_register_number,
-          resolutions, required_registers);
+          &resolutions[0], required_registers);
     for (uint16_t i = 0; i < required_registers; i++) {
       combiner.MaybeWrite();
     }
+
+    return combiner.reply_size();
   }
 
   static Result Parse(const uint8_t* data, uint8_t size) {
@@ -785,7 +817,7 @@ struct PositionMode {
     Resolution fixed_voltage_override = kIgnore;
   };
 
-  static void Make(WriteCanData* frame,
+  static uint8_t Make(WriteCanData* frame,
                    const Command& command,
                    const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
@@ -847,6 +879,7 @@ struct PositionMode {
       frame->WriteVoltage(command.fixed_voltage_override,
                           format.fixed_voltage_override);
     }
+    return 0;
   }
 };
 
@@ -864,9 +897,9 @@ struct VFOCMode {
     Resolution theta_rad_rate = kFloat;
   };
 
-  static void Make(WriteCanData* frame,
-                   const Command& command,
-                   const Format& format) {
+  static uint8_t Make(WriteCanData* frame,
+                      const Command& command,
+                      const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->Write<int8_t>(Register::kMode);
     frame->Write<int8_t>(Mode::kVoltageFoc);
@@ -907,6 +940,8 @@ struct VFOCMode {
     if (combiner.MaybeWrite()) {
       frame->WriteVelocity(command.theta_rad_rate / M_PI, format.theta_rad_rate);
     }
+
+    return 0;
   }
 };
 
@@ -922,9 +957,9 @@ struct CurrentMode {
     Resolution q_A = kFloat;
   };
 
-  static void Make(WriteCanData* frame,
-                   const Command& command,
-                   const Format& format) {
+  static uint8_t Make(WriteCanData* frame,
+                      const Command& command,
+                      const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->Write<int8_t>(Register::kMode);
     frame->Write<int8_t>(Mode::kCurrent);
@@ -946,6 +981,8 @@ struct CurrentMode {
     if (combiner.MaybeWrite()) {
       frame->WriteCurrent(command.d_A, format.d_A);
     }
+
+    return 0;
   }
 };
 
@@ -970,9 +1007,9 @@ struct StayWithinMode {
     Resolution watchdog_timeout = kIgnore;
   };
 
-  static void Make(WriteCanData* frame,
-                   const Command& command,
-                   const Format& format) {
+  static uint8_t Make(WriteCanData* frame,
+                      const Command& command,
+                      const Format& format) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->Write<int8_t>(Register::kMode);
     frame->Write<int8_t>(Mode::kStayWithin);
@@ -1015,6 +1052,7 @@ struct StayWithinMode {
     if (combiner.MaybeWrite()) {
       frame->WriteTime(command.watchdog_timeout, format.watchdog_timeout);
     }
+    return 0;
   }
 };
 
@@ -1022,12 +1060,13 @@ struct BrakeMode {
   struct Command {};
   struct Format {};
 
-  static void Make(WriteCanData* frame,
-                   const Command&,
-                   const Format&) {
+  static uint8_t Make(WriteCanData* frame,
+                      const Command&,
+                      const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->Write<int8_t>(Register::kMode);
     frame->Write<int8_t>(Mode::kBrake);
+    return 0;
   }
 };
 
@@ -1035,12 +1074,13 @@ struct StopMode {
   struct Command {};
   struct Format {};
 
-  static void Make(WriteCanData* frame,
-                   const Command&,
-                   const Format&) {
+  static uint8_t Make(WriteCanData* frame,
+                      const Command&,
+                      const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->Write<int8_t>(Register::kMode);
     frame->Write<int8_t>(Mode::kStopped);
+    return 0;
   }
 };
 
@@ -1055,9 +1095,9 @@ struct GpioWrite {
     Resolution aux2 = kInt8;
   };
 
-  static void Make(WriteCanData* frame,
-                   const Command& command,
-                   const Format& format) {
+  static uint8_t Make(WriteCanData* frame,
+                      const Command& command,
+                      const Format& format) {
     const Resolution kResolutions[] = {
       format.aux1,
       format.aux2,
@@ -1075,6 +1115,7 @@ struct GpioWrite {
     if (combiner.MaybeWrite()) {
       frame->WriteInt(command.aux2, format.aux2);
     }
+    return 0;
   }
 };
 
@@ -1085,10 +1126,11 @@ struct OutputNearest {
 
   struct Format {};
 
-  static void Make(WriteCanData* frame, const Command& command, const Format&) {
+  static uint8_t Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteFloat | 0x01);
     frame->WriteVaruint(Register::kSetOutputNearest);
     frame->Write<float>(command.position);
+    return 0;
   }
 };
 
@@ -1099,10 +1141,11 @@ struct OutputExact {
 
   struct Format {};
 
-  static void Make(WriteCanData* frame, const Command& command, const Format&) {
+  static uint8_t Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteFloat | 0x01);
     frame->WriteVaruint(Register::kSetOutputExact);
     frame->Write<float>(command.position);
+    return 0;
   }
 };
 
@@ -1110,10 +1153,23 @@ struct RequireReindex {
   struct Command {};
   struct Format {};
 
-  static void Make(WriteCanData* frame, const Command&, const Format&) {
+  static uint8_t Make(WriteCanData* frame, const Command&, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
     frame->WriteVaruint(Register::kRequireReindex);
     frame->Write<int8_t>(1);
+    return 0;
+  }
+};
+
+struct RecapturePositionVelocity {
+  struct Command {};
+  struct Format {};
+
+  static uint8_t Make(WriteCanData* frame, const Command&, const Format&) {
+    frame->Write<int8_t>(Multiplex::kWriteInt8 | 0x01);
+    frame->WriteVaruint(Register::kRecapturePositionVelocity);
+    frame->Write<int8_t>(1);
+    return 0;
   }
 };
 
@@ -1126,11 +1182,12 @@ struct DiagnosticWrite {
 
   struct Format {};
 
-  static void Make(WriteCanData* frame, const Command& command, const Format&) {
+  static uint8_t Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kClientToServer);
     frame->Write<int8_t>(command.channel);
     frame->Write<int8_t>(command.size);
     frame->Write(command.data, command.size);
+    return 0;
   }
 };
 
@@ -1142,10 +1199,11 @@ struct DiagnosticRead {
 
   struct Format {};
 
-  static void Make(WriteCanData* frame, const Command& command, const Format&) {
+  static uint8_t Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kClientPollServer);
     frame->Write<int8_t>(command.channel);
     frame->Write<int8_t>(command.max_length);
+    return command.max_length + 3;
   }
 };
 
@@ -1189,10 +1247,11 @@ struct ClockTrim {
 
   struct Format {};
 
-  static void Make(WriteCanData* frame, const Command& command, const Format&) {
+  static uint8_t Make(WriteCanData* frame, const Command& command, const Format&) {
     frame->Write<int8_t>(Multiplex::kWriteInt32 | 0x01);
     frame->WriteVaruint(Register::kClockTrim);
     frame->Write<int32_t>(command.trim);
+    return 0;
   }
 };
 
