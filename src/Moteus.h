@@ -279,6 +279,110 @@ class Moteus {
 
 
   /////////////////////////////////////////
+  // OutputNearest
+
+  CanFdFrame MakeOutputNearest(const mm::OutputNearest::Command& cmd,
+                               const mm::OutputNearest::Format* command_override = nullptr,
+                               const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::OutputNearest(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::OutputNearest::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetOutputNearest(const mm::OutputNearest::Command& cmd,
+                        const mm::OutputNearest::Format* command_override = nullptr,
+                        const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeOutputNearest(cmd, command_override, query_override));
+  }
+
+  void BeginOutputNearest(const mm::OutputNearest::Command& cmd,
+                          const mm::OutputNearest::Format* command_override = nullptr,
+                          const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeOutputNearest(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
+  // OutputExact
+
+  CanFdFrame MakeOutputExact(const mm::OutputExact::Command& cmd,
+                               const mm::OutputExact::Format* command_override = nullptr,
+                               const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::OutputExact(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::OutputExact::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetOutputExact(const mm::OutputExact::Command& cmd,
+                      const mm::OutputExact::Format* command_override = nullptr,
+                      const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeOutputExact(cmd, command_override, query_override));
+  }
+
+  void BeginOutputExact(const mm::OutputExact::Command& cmd,
+                        const mm::OutputExact::Format* command_override = nullptr,
+                        const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeOutputExact(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
+  // RequireReindex
+
+  CanFdFrame MakeRequireReindex(const mm::RequireReindex::Command& cmd,
+                                const mm::RequireReindex::Format* command_override = nullptr,
+                               const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::RequireReindex(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::RequireReindex::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetRequireReindex(const mm::RequireReindex::Command& cmd,
+                         const mm::RequireReindex::Format* command_override = nullptr,
+                         const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeRequireReindex(cmd, command_override, query_override));
+  }
+
+  void BeginRequireReindex(const mm::RequireReindex::Command& cmd,
+                           const mm::RequireReindex::Format* command_override = nullptr,
+                           const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeRequireReindex(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
+  // RecapturePositionVelocity
+
+  CanFdFrame MakeRecapturePositionVelocity(const mm::RecapturePositionVelocity::Command& cmd,
+                                const mm::RecapturePositionVelocity::Format* command_override = nullptr,
+                               const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::RecapturePositionVelocity(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::RecapturePositionVelocity::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetRecapturePositionVelocity(const mm::RecapturePositionVelocity::Command& cmd,
+                                    const mm::RecapturePositionVelocity::Format* command_override = nullptr,
+                                    const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeRecapturePositionVelocity(cmd, command_override, query_override));
+  }
+
+  void BeginRecapturePositionVelocity(const mm::RecapturePositionVelocity::Command& cmd,
+                                      const mm::RecapturePositionVelocity::Format* command_override = nullptr,
+                                      const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeRecapturePositionVelocity(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
   // Diagnostic channel operations
 
   enum DiagnosticReplyMode {
