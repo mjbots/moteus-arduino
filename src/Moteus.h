@@ -74,8 +74,14 @@ class Moteus {
     Options() {}
   };
 
-  Moteus(const Options& options = {})
-      : options_(options) {
+  Options options_;
+
+  Moteus()
+  {
+  }
+
+  void Initialize()
+  {
     mm::CanData can_data;
     mm::WriteCanData query_write(&can_data);
     mm::Query::Make(&query_write, options_.query_format);
@@ -94,10 +100,8 @@ class Moteus {
   // The most recent result from any command.
   const Result& last_result() const { return last_result_; }
 
-
   /////////////////////////////////////////
   // Query
-
   CanFdFrame MakeQuery(const mm::Query::Format* format_override = nullptr) {
     return MakeFrame(mm::EmptyMode(), {}, {},
                      format_override == nullptr ?
@@ -724,8 +728,6 @@ class Moteus {
     msg->len = new_size;
   }
 
-  // ACAN2517FD& can_bus_;
-  const Options options_;
 
   Result last_result_;
   char* query_data_ = nullptr;
