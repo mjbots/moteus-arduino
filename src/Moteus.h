@@ -43,6 +43,9 @@ class Moteus {
   using VFOCMode = mm::VFOCMode;
   using CurrentMode = mm::CurrentMode;
   using StayWithinMode = mm::StayWithinMode;
+  using ZeroVelocityMode = mm::ZeroVelocityMode;
+  using GpioRead = mm::GpioRead;
+  using AuxPwmWrite = mm::AuxPwmWrite;
 
   static constexpr mm::Resolution kInt8 = mm::Resolution::kInt8;
   static constexpr mm::Resolution kInt16 = mm::Resolution::kInt16;
@@ -275,6 +278,84 @@ class Moteus {
                        const mm::StayWithinMode::Format* command_override = nullptr,
                        const mm::Query::Format* query_override = nullptr) {
     BeginSingleCommand(MakeStayWithin(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
+  // ZeroVelocityMode
+
+  CanFdFrame MakeZeroVelocity(const mm::ZeroVelocityMode::Command& cmd = {},
+                              const mm::ZeroVelocityMode::Format* command_override = nullptr,
+                              const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::ZeroVelocityMode(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::ZeroVelocityMode::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetZeroVelocity(const mm::ZeroVelocityMode::Command& cmd = {},
+                       const mm::ZeroVelocityMode::Format* command_override = nullptr,
+                       const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeZeroVelocity(cmd, command_override, query_override));
+  }
+
+  void BeginZeroVelocity(const mm::ZeroVelocityMode::Command& cmd = {},
+                         const mm::ZeroVelocityMode::Format* command_override = nullptr,
+                         const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeZeroVelocity(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
+  // GpioRead
+
+  CanFdFrame MakeGpioRead(const mm::GpioRead::Command& cmd = {},
+                          const mm::GpioRead::Format* command_override = nullptr,
+                          const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::GpioRead(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::GpioRead::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetGpioRead(const mm::GpioRead::Command& cmd = {},
+                   const mm::GpioRead::Format* command_override = nullptr,
+                   const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeGpioRead(cmd, command_override, query_override));
+  }
+
+  void BeginGpioRead(const mm::GpioRead::Command& cmd = {},
+                     const mm::GpioRead::Format* command_override = nullptr,
+                     const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeGpioRead(cmd, command_override, query_override));
+  }
+
+
+  /////////////////////////////////////////
+  // AuxPwmWrite
+
+  CanFdFrame MakeAuxPwmWrite(const mm::AuxPwmWrite::Command& cmd,
+                             const mm::AuxPwmWrite::Format* command_override = nullptr,
+                             const mm::Query::Format* query_override = nullptr) {
+    return MakeFrame(mm::AuxPwmWrite(),
+                     cmd,
+                     (command_override == nullptr ?
+                      mm::AuxPwmWrite::Format() : *command_override),
+                     query_override);
+  }
+
+  bool SetAuxPwmWrite(const mm::AuxPwmWrite::Command& cmd,
+                      const mm::AuxPwmWrite::Format* command_override = nullptr,
+                      const mm::Query::Format* query_override = nullptr) {
+    return ExecuteSingleCommand(MakeAuxPwmWrite(cmd, command_override, query_override));
+  }
+
+  void BeginAuxPwmWrite(const mm::AuxPwmWrite::Command& cmd,
+                        const mm::AuxPwmWrite::Format* command_override = nullptr,
+                        const mm::Query::Format* query_override = nullptr) {
+    BeginSingleCommand(MakeAuxPwmWrite(cmd, command_override, query_override));
   }
 
 
