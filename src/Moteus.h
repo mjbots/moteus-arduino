@@ -17,6 +17,19 @@
 #include "moteus_protocol.h"
 #include "moteus_can.h"
 
+// Platform timing abstraction.  On Arduino, these are provided
+// automatically.  On bare-metal platforms, the user must implement
+// moteus_micros() and moteus_delay_ms() and link them into the
+// project.  See examples/Stm32BareMetal/ for a complete example.
+#ifdef ARDUINO
+#include <Arduino.h>
+inline uint32_t moteus_micros() { return ::micros(); }
+inline void moteus_delay_ms(uint32_t ms) { ::delay(ms); }
+#else
+extern uint32_t moteus_micros();
+extern void moteus_delay_ms(uint32_t ms);
+#endif
+
 namespace mm = mjbots::moteus;
 
 /// This is the primary interface to a moteus controller.  One
@@ -200,7 +213,7 @@ class MoteusController {
         return true;
       }
 
-      delay(static_cast<unsigned long>(period_s * 1000));
+      moteus_delay_ms(static_cast<uint32_t>(period_s * 1000));
     }
   }
 
@@ -467,6 +480,12 @@ class MoteusController {
 
   /////////////////////////////////////////
   // Diagnostic channel operations
+  //
+  // These methods use the Arduino String class and are only available
+  // when building with the Arduino framework.  On bare-metal platforms,
+  // the diagnostic protocol can be accessed directly via MakeFrame()
+  // with DiagnosticWrite/DiagnosticRead structs from moteus_protocol.h.
+#ifdef ARDUINO
 
   enum DiagnosticReplyMode {
     kExpectOK,
@@ -496,12 +515,12 @@ class MoteusController {
     String response;
     String current_line;
 
-    const auto start = micros();
+    const auto start = moteus_micros();
     auto end = start + kDiagnosticTimeoutUs;
 
     while (true) {
       {
-        const auto now = micros();
+        const auto now = moteus_micros();
         if (static_cast<long>(now - end) > 0) {
           return {};
         }
@@ -518,7 +537,7 @@ class MoteusController {
       while (true) {
         if (![&]() {
           while (!Poll()) {
-            const auto now = micros();
+            const auto now = moteus_micros();
             if (static_cast<long>(now - end) > 0) {
               return false;
             }
@@ -594,13 +613,13 @@ class MoteusController {
       BeginSingleCommand(frame);
     }
 
-    const auto start = micros();
+    const auto start = moteus_micros();
     auto end = start + kDiagnosticTimeoutUs;
 
     while (true) {
       if (![&]() {
         while (!Poll()) {
-          const auto now = micros();
+          const auto now = moteus_micros();
           if (static_cast<long>(now - end) > 0) {
             return false;
           }
@@ -632,6 +651,8 @@ class MoteusController {
     }
   }
 
+#endif  // ARDUINO — diagnostic channel operations
+
   /////////////////////////////////////////
   // Non-command related methods
 
@@ -639,7 +660,7 @@ class MoteusController {
   /// has been received.  The parsed results can be seen in
   /// Moteus::last_result()
   bool Poll() {
-    const auto now = micros();
+    const auto now = moteus_micros();
 
     // Ensure any interrupts have been handled.
     can_bus_.poll();
@@ -726,12 +747,12 @@ class MoteusController {
 
     if (!reply_required) { return false; }
 
-    auto start = micros();
+    auto start = moteus_micros();
     auto end = start + options_.min_rcv_wait_us;
     bool got_a_response = false;
 
     while (true) {
-      const auto now = micros();
+      const auto now = moteus_micros();
       const auto delta = static_cast<long>(now - end);
       if (delta > 0) {
         // We timed out.

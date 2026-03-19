@@ -62,6 +62,24 @@ Each header provides a `Moteus` type alias so the rest of your sketch code is th
 
 To use CAN-FD hardware not listed above, include `<Moteus.h>` directly and provide a class with `poll()`, `available()`, `receive(CANFDMessage&)`, and `tryToSend(const CANFDMessage&)` methods.  Then instantiate `MoteusController<YourClass>`.
 
+### Bare-metal STM32 (no Arduino framework) ###
+
+The library can be used without the Arduino framework on STM32 projects.  You need to provide two platform timing functions that the library calls internally:
+
+```cpp
+// Must return a monotonically increasing microsecond count (wrapping is OK).
+uint32_t moteus_micros() {
+    return HAL_GetTick() * 1000;  // or use DWT/timer for true µs resolution
+}
+
+// Must block for approximately the given number of milliseconds.
+void moteus_delay_ms(uint32_t ms) {
+    HAL_Delay(ms);
+}
+```
+
+Then include `MoteusStm32Fdcan.h` and use `MoteusController<MoteusStm32FdCan>` directly.  Diagnostic channel methods (which depend on the Arduino `String` class) are not available in bare-metal builds.  See `examples/Stm32BareMetal/Stm32BareMetal.cpp` for a complete example.
+
 ## Examples ##
 
 Several examples are available.  You can access them from the Arduino IDE by opening the "File" menu, selecting "Examples", and then selecting "moteus".
@@ -71,6 +89,7 @@ Several examples are available.  You can access them from the Arduino IDE by ope
 * **WaitComplete** — MCP2517FD: waiting for trajectory completion
 * **TeensyBasicControl** — Teensy 4.x: same as BasicControl using on-board CAN3
 * **Stm32BasicControl** — STM32 H7/G4/G0: same as BasicControl using on-board FDCAN1
+* **Stm32BareMetal** — STM32 without Arduino framework: bare-metal HAL usage
 
 ## Documentation ##
 
