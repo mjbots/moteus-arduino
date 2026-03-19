@@ -15,6 +15,7 @@
 #pragma once
 
 #include "moteus_protocol.h"
+#include "moteus_can.h"
 
 namespace mm = mjbots::moteus;
 
@@ -32,8 +33,9 @@ namespace mm = mjbots::moteus;
 ///
 ///  3. A "Begin" variant which sends a command and requires that the
 ///     user call Poll() regularly to check for a response, and then
-///     retrieve that response from Moteus::last_result().
-class Moteus {
+///     retrieve that response from MoteusController::last_result().
+template <typename CanBus>
+class MoteusController {
  public:
   using CanFdFrame = mm::CanFdFrame;
   static constexpr int kDiagnosticTimeoutUs = 4000;
@@ -77,7 +79,7 @@ class Moteus {
     Options() {}
   };
 
-  Moteus(ACAN2517FD& can_bus,
+  MoteusController(CanBus& can_bus,
          const Options& options = {})
       : can_bus_(can_bus),
         options_(options) {
@@ -706,7 +708,7 @@ class Moteus {
     ::memcpy(&can_message.data[0], &frame.data[0], frame.size);
     can_message.ext = true;
 
-    PadCan(&can_message);
+    mm::PadCan(&can_message);
 
     // To work even when the ACAN2517FD doesn't have functioning
     // interrupts, we will just poll it before and after attempting to
@@ -790,35 +792,7 @@ class Moteus {
     return result;
   }
 
-  static int8_t RoundUpDlc(int8_t size) {
-    if (size <= 0) { return 0; }
-    if (size <= 1) { return 1; }
-    if (size <= 2) { return 2; }
-    if (size <= 3) { return 3; }
-    if (size <= 4) { return 4; }
-    if (size <= 5) { return 5; }
-    if (size <= 6) { return 6; }
-    if (size <= 7) { return 7; }
-    if (size <= 8) { return 8; }
-    if (size <= 12) { return 12; }
-    if (size <= 16) { return 16; }
-    if (size <= 20) { return 20; }
-    if (size <= 24) { return 24; }
-    if (size <= 32) { return 32; }
-    if (size <= 48) { return 48; }
-    if (size <= 64) { return 64; }
-    return 0;
-  }
-
-  static void PadCan(CANFDMessage* msg) {
-    const auto new_size = RoundUpDlc(msg->len);
-    for (int8_t i = msg->len; i < new_size; i++) {
-      msg->data[i] = 0x50;
-    }
-    msg->len = new_size;
-  }
-
-  ACAN2517FD& can_bus_;
+  CanBus& can_bus_;
   const Options options_;
 
   Result last_result_;

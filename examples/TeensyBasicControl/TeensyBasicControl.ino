@@ -1,40 +1,37 @@
 //——————————————————————————————————————————————————————————————————————————————
 // Demonstration of control and monitoring of 2 moteus controllers
-// running on a CANBed FD from longan labs.
+// using a Teensy 4.x board with on-board CAN-FD hardware.
 //  * https://mjbots.com/products/moteus-r4-11
-//  * https://www.longan-labs.cc/1030009.html
+//
+// Requires a CAN-FD transceiver connected to Teensy CAN3 (pins 30/31).
 //
 // Controller ID 1 is moved through a sine wave pattern, while
 // controller ID 2 just has a brake command sent.
 // ——————————————————————————————————————————————————————————————————————————————
 
-#include <MoteusAcan2517fd.h>
+#include <MoteusTeensy.h>
 
 //——————————————————————————————————————————————————————————————————————————————
-//  The following pins are selected for the CANBed FD board.
+//  CAN-FD configuration
 //——————————————————————————————————————————————————————————————————————————————
 
-static const byte MCP2517_SCK = 9 ; // SCK input of MCP2517
-static const byte MCP2517_SDI =  10 ; // SDI input of MCP2517
-static const byte MCP2517_SDO =  11 ; // SDO output of MCP2517
+// 1 Mbps arbitration and data rate.
+ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
 
-static const byte MCP2517_CS  = 17 ; // CS input of MCP2517
-static const byte MCP2517_INT = 7 ; // INT output of MCP2517
+MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
 static uint32_t gNextSendMillis = 0;
 
 //——————————————————————————————————————————————————————————————————————————————
-//  ACAN2517FD Driver object
+//  Moteus controller objects
 //——————————————————————————————————————————————————————————————————————————————
 
-ACAN2517FD can (MCP2517_CS, SPI, MCP2517_INT) ;
-
-Moteus moteus1(can, []() {
+Moteus moteus1(canBus, []() {
   Moteus::Options options;
   options.id = 1;
   return options;
 }());
-Moteus moteus2(can, []() {
+Moteus moteus2(canBus, []() {
   Moteus::Options options;
   options.id = 2;
   return options;
@@ -43,31 +40,14 @@ Moteus moteus2(can, []() {
 Moteus::PositionMode::Command position_cmd;
 
 void setup() {
-  pinMode (LED_BUILTIN, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
-  // Let the world know we have begun!
   Serial.begin(115200);
   while (!Serial) {}
   Serial.println(F("started"));
 
-  SPI.begin();
-
-  // This operates the CAN-FD bus at 1Mbit for both the arbitration
-  // and data rate.  Most arduino shields cannot operate at 5Mbps
-  // correctly, so the moteus Arduino library permanently disables
-  // BRS.
-  ACAN2517FDSettings settings(
-      ACAN2517FDSettings::OSC_20MHz, 1000ll * 1000ll, DataBitRateFactor::x1);
-
-  // The atmega32u4 on the CANbed has only a tiny amount of memory.
-  // The ACAN2517FD driver needs custom settings so as to not exhaust
-  // all of SRAM just with its buffers.
-  settings.mArbitrationSJW = 2;
-  settings.mDriverTransmitFIFOSize = 1;
-  settings.mDriverReceiveFIFOSize = 2;
-
-  const uint32_t errorCode = can.begin(settings, [] { can.isr(); });
-
+  // Initialize CAN3 for CAN-FD operation.
+  const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
     Serial.print(F("CAN error 0x"));
     Serial.println(errorCode, HEX);

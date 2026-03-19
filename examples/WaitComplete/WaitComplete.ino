@@ -7,8 +7,7 @@
 //  * https://www.longan-labs.cc/1030009.html
 // ——————————————————————————————————————————————————————————————————————————————
 
-#include <ACAN2517FD.h>
-#include <Moteus.h>
+#include <MoteusAcan2517fd.h>
 
 //——————————————————————————————————————————————————————————————————————————————
 //  The following pins are selected for the CANBed FD board.
