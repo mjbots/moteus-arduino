@@ -44,7 +44,7 @@ class MoteusTeensyCanFD {
     // ACAN_T4 is interrupt-driven and does not need polling for
     // message processing.  However, it does not auto-recover from
     // bus-off, so we check and reinitialize if needed.
-    if (bus_.controllerState() == ACAN_T4::kBusOff) {
+    if (bus_.controllerState() == kBusOff) {
       bus_.end();
       bus_.beginFD(settings_);
     }
