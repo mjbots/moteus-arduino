@@ -7,6 +7,7 @@ This is a C++ library that provides a convenient API for controlling and monitor
 * **MCP2517FD / MCP2518FD** external CAN-FD controllers via SPI (using the ACAN2517FD library)
 * **Teensy 4.x** on-board CAN-FD hardware (using the ACAN_T4 library)
 * **STM32 FDCAN** on-board peripherals on H7, G4, and G0 families (using the STM32 HAL)
+* **UART** moteus controllers with sufficiently new firmware support a logical level TTL UART connection to monitor and control
 
 * [![CI](https://github.com/mjbots/moteus-arduino/actions/workflows/ci.yml/badge.svg)](https://github.com/mjbots/moteus-arduino/actions/workflows/ci.yml)
 
