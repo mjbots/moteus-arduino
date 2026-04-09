@@ -89,6 +89,11 @@ class MoteusController {
 
     uint16_t min_rcv_wait_us = 2000;
 
+    // Maximum number of retries for diagnostic read operations when
+    // no response is received.  Set to a non-zero value for UART
+    // connections where replies can be lost.
+    int diagnostic_retry_count = 0;
+
     Options() {}
   };
 
@@ -525,14 +530,7 @@ class MoteusController {
           return {};
         }
       }
-      {
-        mm::DiagnosticRead::Command read;
-        auto frame = DefaultFrame(kReplyRequired);
-        mm::WriteCanData write_frame(frame.data, &frame.size);
-        mm::DiagnosticRead::Make(&write_frame, read, {});
-
-        BeginSingleCommand(frame);
-      }
+      BeginSingleCommand(MakeDiagnosticReadFrame(1));
 
       while (true) {
         if (![&]() {
@@ -548,8 +546,8 @@ class MoteusController {
         }
 
         {
-          const auto parsed = mm::DiagnosticResponse::Parse(
-              last_result_.frame.data, last_result_.frame.size);
+          const auto parsed = ParseDiagnosticResponse(
+              last_result_.frame.data, last_result_.frame.size, 1);
           if (parsed.channel != 1) {
             // This must not have been for us after all.
             continue;
@@ -603,45 +601,42 @@ class MoteusController {
   }
 
   String SetDiagnosticRead(int channel = 1) {
-    {
-      mm::DiagnosticRead::Command read;
-      read.channel = channel;
-      auto frame = DefaultFrame(kReplyRequired);
-      mm::WriteCanData write_frame(frame.data, &frame.size);
-      mm::DiagnosticRead::Make(&write_frame, read, {});
+    for (int attempt = 0;
+         attempt <= options_.diagnostic_retry_count;
+         attempt++) {
+      BeginSingleCommand(MakeDiagnosticReadFrame(channel));
 
-      BeginSingleCommand(frame);
-    }
+      const auto start = moteus_micros();
+      auto end = start + kDiagnosticTimeoutUs;
 
-    const auto start = moteus_micros();
-    auto end = start + kDiagnosticTimeoutUs;
-
-    while (true) {
-      if (![&]() {
-        while (!Poll()) {
-          const auto now = moteus_micros();
-          if (static_cast<long>(now - end) > 0) {
-            return false;
+      while (true) {
+        if (![&]() {
+          while (!Poll()) {
+            const auto now = moteus_micros();
+            if (static_cast<long>(now - end) > 0) {
+              return false;
+            }
           }
+          return true;
+        }()) {
+          break;  // Timed out, retry if attempts remain.
         }
-        return true;
-      }()) {
-        return "";
-      }
 
-      const auto parsed = mm::DiagnosticResponse::Parse(
-          last_result_.frame.data, last_result_.frame.size);
-      if (parsed.channel != channel) {
-        continue;
-      }
+        const auto parsed = ParseDiagnosticResponse(
+            last_result_.frame.data, last_result_.frame.size, channel);
+        if (parsed.channel != channel) {
+          continue;
+        }
 
-      String result;
-      result.reserve(parsed.size);
-      for (int8_t i = 0; i < parsed.size; i++) {
-        result.concat(static_cast<char>(parsed.data[i]));
+        String result;
+        result.reserve(parsed.size);
+        for (int8_t i = 0; i < parsed.size; i++) {
+          result.concat(static_cast<char>(parsed.data[i]));
+        }
+        return result;
       }
-      return result;
     }
+    return "";
   }
 
   void SetDiagnosticFlush(int channel = 1) {
@@ -813,10 +808,81 @@ class MoteusController {
     return result;
   }
 
+  struct DiagnosticParsed {
+    int8_t channel = -1;
+    const uint8_t* data = nullptr;
+    int8_t size = 0;
+  };
+
+  CanFdFrame MakeDiagnosticReadFrame(int channel) {
+    auto frame = DefaultFrame(kReplyRequired);
+    mm::WriteCanData write_frame(frame.data, &frame.size);
+
+    if (!flow_control_probed_ || use_flow_control_) {
+      mm::DiagnosticReadFlow::Command read;
+      read.channel = channel;
+      read.packet_number = last_ack_packet_[channel < 4 ? channel : 0];
+      mm::DiagnosticReadFlow::Make(&write_frame, read, {});
+    } else {
+      mm::DiagnosticRead::Command read;
+      read.channel = channel;
+      mm::DiagnosticRead::Make(&write_frame, read, {});
+    }
+
+    return frame;
+  }
+
+  DiagnosticParsed ParseDiagnosticResponse(
+      const uint8_t* data, uint8_t size, int channel) {
+    DiagnosticParsed result;
+
+    if (!flow_control_probed_) {
+      flow_control_probed_ = true;
+      // Try parsing as flow response first.
+      auto flow = mm::DiagnosticFlowResponse::Parse(data, size);
+      if (flow.channel >= 0) {
+        use_flow_control_ = true;
+        if (flow.channel < 4) {
+          last_ack_packet_[flow.channel] = flow.packet_number;
+        }
+        result.channel = flow.channel;
+        result.data = flow.data;
+        result.size = flow.size;
+        return result;
+      }
+      // Fall back to plain response.
+      auto plain = mm::DiagnosticResponse::Parse(data, size);
+      result.channel = plain.channel;
+      result.data = plain.data;
+      result.size = plain.size;
+      return result;
+    }
+
+    if (use_flow_control_) {
+      auto flow = mm::DiagnosticFlowResponse::Parse(data, size);
+      if (flow.channel >= 0 && flow.channel < 4) {
+        last_ack_packet_[flow.channel] = flow.packet_number;
+      }
+      result.channel = flow.channel;
+      result.data = flow.data;
+      result.size = flow.size;
+    } else {
+      auto plain = mm::DiagnosticResponse::Parse(data, size);
+      result.channel = plain.channel;
+      result.data = plain.data;
+      result.size = plain.size;
+    }
+    return result;
+  }
+
   CanBus& can_bus_;
   const Options options_;
 
   Result last_result_;
   char* query_data_ = nullptr;
   size_t query_size_ = 0;
+
+  bool flow_control_probed_ = false;
+  bool use_flow_control_ = false;
+  uint8_t last_ack_packet_[4] = {};
 };
