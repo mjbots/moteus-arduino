@@ -8,14 +8,17 @@ Arduino library for controlling mjbots moteus brushless servo controllers over C
 
 ## Build & Test
 
-This is an Arduino library (no Makefile/CMake). To compile examples:
+This is an Arduino library (no Makefile/CMake). `bash ci.sh` compiles everything (examples plus compile tests) for all supported boards; it is what CI runs and requires arduino-cli (downloaded automatically if absent).
+
+Compile tests live in `tests/`. Because `MoteusController` is a class template, member functions are only type-checked when instantiated — so the tests explicitly instantiate every controller/transport combination and link the full public API (`tests/arduino_compile_test/`, run for AVR mega, Teensy 4.1, STM32G4, STM32H7). `tests/host_compile_test/` builds the non-Arduino code path with plain host g++ for fast, readable errors:
 
 ```bash
-# Using arduino-cli (install board core first)
-arduino-cli compile --fqbn <board_fqbn> examples/BasicControl/BasicControl.ino
+g++ -std=gnu++11 -Wall -Wextra -Werror -Isrc tests/host_compile_test/host_compile_test.cc -o /tmp/t
 ```
 
-There is no formal test suite. The three examples in `examples/` serve as integration tests and must be verified on real hardware with a moteus controller.
+Any new public API must be added to `tests/arduino_compile_test/compile_test_common.h`.
+
+Runtime behavior must still be verified on real hardware with a moteus controller; the examples in `examples/` serve as those integration tests.
 
 ## Architecture
 

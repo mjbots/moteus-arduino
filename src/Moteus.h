@@ -61,6 +61,10 @@ class MoteusController {
   using ZeroVelocityMode = mm::ZeroVelocityMode;
   using GpioRead = mm::GpioRead;
   using AuxPwmWrite = mm::AuxPwmWrite;
+  using OutputNearest = mm::OutputNearest;
+  using OutputExact = mm::OutputExact;
+  using RequireReindex = mm::RequireReindex;
+  using RecapturePositionVelocity = mm::RecapturePositionVelocity;
 
   static constexpr mm::Resolution kInt8 = mm::Resolution::kInt8;
   static constexpr mm::Resolution kInt16 = mm::Resolution::kInt16;
@@ -833,7 +837,7 @@ class MoteusController {
   }
 
   DiagnosticParsed ParseDiagnosticResponse(
-      const uint8_t* data, uint8_t size, int channel) {
+      const uint8_t* data, uint8_t size, int /* channel */) {
     DiagnosticParsed result;
 
     if (!flow_control_probed_) {

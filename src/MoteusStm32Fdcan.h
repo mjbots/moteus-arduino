@@ -35,6 +35,13 @@
 /// Requires STM32 HAL headers with FDCAN support (typically provided
 /// by an STM32 Arduino core, but the adapter itself uses only the
 /// STM32 HAL, not Arduino APIs).
+///
+/// The stm32duino core only compiles the HAL FDCAN module when
+/// HAL_FDCAN_MODULE_ENABLED is defined.  This library ships a
+/// hal_conf_extra.h that defines it, so this normally works
+/// automatically — but if your sketch provides its own
+/// hal_conf_extra.h, that copy takes precedence and must contain
+/// "#define HAL_FDCAN_MODULE_ENABLED" itself.
 
 #pragma once
 
